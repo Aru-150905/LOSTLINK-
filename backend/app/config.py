@@ -31,9 +31,11 @@ class Settings(BaseSettings):
     match_top_k: int = 5
     match_candidate_limit: int = 50
 
-    # Minimum confidence (0-1) for a candidate to count as a match. Raised from
-    # the old hard-coded 0.05 which let near-random pairs through.
-    match_threshold: float = 0.35
+    # Minimum confidence (0-1) for a candidate to count as a match. Image/text
+    # similarity is now calibrated (see ai/matching.py IMAGE_SIM_FLOOR etc.)
+    # so this threshold operates on a rescaled 0-1 score, not raw cosine
+    # similarity.
+    match_threshold: float = 0.40
 
     # Preload CLIP + MiniLM at startup instead of on the first request.
     warmup_models: bool = False

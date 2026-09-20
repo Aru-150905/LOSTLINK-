@@ -11,7 +11,22 @@ from typing import Any, Optional
 IMAGE_WEIGHT = 0.70
 TEXT_WEIGHT = 0.20
 METADATA_WEIGHT = 0.10
-DEFAULT_MATCH_THRESHOLD = 0.35
+DEFAULT_MATCH_THRESHOLD = 0.40
+
+# Raw cosine similarity from these encoders is not a 0-1 "how similar are
+# these" scale: contrastive embeddings pack into a narrow cone of the
+# hypersphere, so even unrelated inputs land at a fairly high baseline and
+# near-duplicates only edge a bit higher. CLIP ViT-B/32 image embeddings in
+# particular tend to put unrelated photos around ~0.5-0.6 and near-identical
+# photos above ~0.95, which squeezes "same object, different photo" pairs
+# into a narrow band that a flat threshold can't distinguish from noise
+# without rescaling. FLOOR/CEILING below stretch that useful band back out
+# to 0-1 so genuinely similar (but not pixel-identical) images can clear the
+# match threshold instead of only exact duplicates doing so.
+IMAGE_SIM_FLOOR = 0.55
+IMAGE_SIM_CEILING = 0.95
+TEXT_SIM_FLOOR = 0.25
+TEXT_SIM_CEILING = 0.92
 
 
 class MatchingEngine:
@@ -27,8 +42,16 @@ class MatchingEngine:
         source_text = self._normalize_embedding(source.get("text_embedding"))
         candidate_text = self._normalize_embedding(candidate.get("text_embedding"))
 
-        image_score = self._embedding_similarity(source_image, candidate_image)
-        text_score = self._embedding_similarity(source_text, candidate_text)
+        image_score = self._calibrate(
+            self._embedding_similarity(source_image, candidate_image),
+            IMAGE_SIM_FLOOR,
+            IMAGE_SIM_CEILING,
+        )
+        text_score = self._calibrate(
+            self._embedding_similarity(source_text, candidate_text),
+            TEXT_SIM_FLOOR,
+            TEXT_SIM_CEILING,
+        )
         metadata_score = self._metadata_similarity(source, candidate)
 
         has_image = source_image is not None and candidate_image is not None
@@ -79,10 +102,19 @@ class MatchingEngine:
             return None
 
         if isinstance(vec, str):
-            vec = vec.strip("{}")
+            # pgvector's `vector` type has no native PostgREST/JSON codec, so
+            # Supabase always returns it as its Postgres text literal, e.g.
+            # "[0.01,0.02,...]" (square brackets, pgvector's own format) -
+            # NOT "{0.01,0.02,...}" (Postgres array-literal braces). Stripping
+            # only "{}" left the brackets in place, so every real embedding
+            # fetched from the DB failed float() and silently came back as
+            # None - meaning image/text similarity never factored into a
+            # match at all, and only metadata (location/time/title text)
+            # could produce one.
+            vec = vec.strip().strip("{}[]")
             try:
-                return [float(x) for x in vec.split(",")]
-            except:
+                return [float(x) for x in vec.split(",") if x.strip()]
+            except ValueError:
                 return None
 
         if isinstance(vec, list):
@@ -111,6 +143,16 @@ class MatchingEngine:
 
         similarity = dot / (norm_a * norm_b)
         return max(0.0, min(1.0, similarity))
+
+    @staticmethod
+    def _calibrate(raw_similarity: float, floor: float, ceiling: float) -> float:
+        """Rescale a raw cosine similarity so the floor..ceiling band (where
+        the actual discrimination happens) spans the full 0..1 range."""
+        if raw_similarity <= floor:
+            return 0.0
+        if raw_similarity >= ceiling:
+            return 1.0
+        return (raw_similarity - floor) / (ceiling - floor)
 
     def _metadata_similarity(
         self,

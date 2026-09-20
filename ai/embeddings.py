@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Optional
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,11 @@ class EmbeddingService:
             import torch
 
             processor, model = _load_clip()
-            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            image = Image.open(io.BytesIO(image_bytes))
+            # Phones write rotation into EXIF instead of the pixel data, so two
+            # photos of the same object can load in different orientations and
+            # embed very differently unless we bake the rotation in first.
+            image = ImageOps.exif_transpose(image).convert("RGB")
             inputs = processor(images=image, return_tensors="pt")
 
             with torch.no_grad():
