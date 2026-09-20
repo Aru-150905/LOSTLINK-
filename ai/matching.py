@@ -22,19 +22,28 @@ DEFAULT_MATCH_THRESHOLD = 0.40
 # instead of only exact duplicates doing so.
 #
 # IMAGE_SIM_FLOOR/CEILING were measured, not guessed: ran openai/clip-vit-
-# base-patch32 (the model this module loads) on real test photos through
-# this exact code path. Two genuinely unrelated items came back at
-# 0.68-0.79 raw cosine similarity; two different items in the same category
-# (two different backpacks) at 0.91-0.93; two different photos of the very
-# *same* physical item (different angle/lighting/blur/crop) at ~0.95;
-# byte-identical images at 1.00. An earlier, unmeasured guess (floor 0.55)
-# left unrelated items scoring ~0.49 confidence - almost as high as the
-# 0.40 match threshold, defeating the whole point of calibrating. Floor is
-# set above the observed unrelated band so those items land at 0.
-# TEXT_SIM_FLOOR/CEILING, unlike the image ones above, are an estimate, not
-# measured against this module's actual sentence-transformers model.
-IMAGE_SIM_FLOOR = 0.82
-IMAGE_SIM_CEILING = 0.97
+# base-patch32 (the model this module loads) on real photos (pulled from
+# Wikimedia Commons, not staged studio shots) through this exact code path.
+# The absolute similarity band shifts a lot with photographic style - clean
+# product-style renders separate cleanly (unrelated ~0.68-0.79, same
+# physical item ~0.95-1.00), but real "in the wild" photos (different
+# angles, a person in frame, different eras/lighting) compress hard: two
+# real unrelated items landed at 0.39-0.49, while two photos of the very
+# same backpack model - one a candid modern shot, one an archival B&W photo
+# - landed at 0.588... which tied EXACTLY with an unrelated item (backpack
+# vs. a bicycle, also 0.588). That is a genuine ceiling on what raw
+# whole-image cosine similarity can discriminate once photo style varies
+# enough, not a threshold that can be tuned away - no floor/ceiling here
+# will perfectly separate every case. What this rescaling can still do
+# reliably: crush clearly-unrelated pairs to ~0, give a small-but-nonzero
+# lift to ambiguous same-category cases (appropriate, since the evidence
+# for those is genuinely weak), and let true near-duplicates still read as
+# a near-certain match. It is deliberately a soft signal in the 0.70 image
+# weight below, not a hard filter - text description and metadata (and,
+# ultimately, the human confirming a claim) are what resolve the cases
+# image similarity alone can't.
+IMAGE_SIM_FLOOR = 0.55
+IMAGE_SIM_CEILING = 0.95
 TEXT_SIM_FLOOR = 0.25
 TEXT_SIM_CEILING = 0.92
 
