@@ -1,6 +1,10 @@
 torch>=2.0.0
-transformers>=4.40.0
-sentence-transformers>=3.0.0
+# transformers 5.x changes CLIPModel.get_image_features()'s output shape,
+# which breaks ai/embeddings.py's indexing (verified: image embeddings come
+# back wrapped in an extra dimension, producing a 1-element "vector" instead
+# of 512-dim). Capped until that code is updated for the new API.
+transformers>=4.40.0,<5.0.0
+sentence-transformers>=3.0.0,<4.0.0
 Pillow>=10.0.0
 numpy>=1.26.0
 fastapi>=0.115.0

@@ -16,15 +16,25 @@ DEFAULT_MATCH_THRESHOLD = 0.40
 # Raw cosine similarity from these encoders is not a 0-1 "how similar are
 # these" scale: contrastive embeddings pack into a narrow cone of the
 # hypersphere, so even unrelated inputs land at a fairly high baseline and
-# near-duplicates only edge a bit higher. CLIP ViT-B/32 image embeddings in
-# particular tend to put unrelated photos around ~0.5-0.6 and near-identical
-# photos above ~0.95, which squeezes "same object, different photo" pairs
-# into a narrow band that a flat threshold can't distinguish from noise
-# without rescaling. FLOOR/CEILING below stretch that useful band back out
-# to 0-1 so genuinely similar (but not pixel-identical) images can clear the
-# match threshold instead of only exact duplicates doing so.
-IMAGE_SIM_FLOOR = 0.55
-IMAGE_SIM_CEILING = 0.95
+# near-duplicates only edge a bit higher. FLOOR/CEILING below stretch the
+# band where the actual discrimination happens back out to 0-1, so genuinely
+# similar (but not pixel-identical) images can clear the match threshold
+# instead of only exact duplicates doing so.
+#
+# IMAGE_SIM_FLOOR/CEILING were measured, not guessed: ran openai/clip-vit-
+# base-patch32 (the model this module loads) on real test photos through
+# this exact code path. Two genuinely unrelated items came back at
+# 0.68-0.79 raw cosine similarity; two different items in the same category
+# (two different backpacks) at 0.91-0.93; two different photos of the very
+# *same* physical item (different angle/lighting/blur/crop) at ~0.95;
+# byte-identical images at 1.00. An earlier, unmeasured guess (floor 0.55)
+# left unrelated items scoring ~0.49 confidence - almost as high as the
+# 0.40 match threshold, defeating the whole point of calibrating. Floor is
+# set above the observed unrelated band so those items land at 0.
+# TEXT_SIM_FLOOR/CEILING, unlike the image ones above, are an estimate, not
+# measured against this module's actual sentence-transformers model.
+IMAGE_SIM_FLOOR = 0.82
+IMAGE_SIM_CEILING = 0.97
 TEXT_SIM_FLOOR = 0.25
 TEXT_SIM_CEILING = 0.92
 
