@@ -8,7 +8,7 @@ import { Package, RefreshCw } from "lucide-react";
 import { ItemCard } from "@/components/matches/match-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getMyItems, markResolved, searchMatches } from "@/lib/api";
+import { ApiError, getMyItems, markResolved, searchMatches } from "@/lib/api";
 import type { Item } from "@/types";
 
 export default function MyItemsPage() {
@@ -21,9 +21,18 @@ export default function MyItemsPage() {
     try {
       const data = await getMyItems();
       setItems(data);
-    } catch {
-      toast.error("Please sign in to view your items");
-      router.push("/auth");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        toast.error("Please sign in to view your items");
+        router.push("/auth");
+      } else {
+        // A non-auth failure (backend down, 500, network error, ...) was
+        // previously swallowed and misreported as "please sign in", which
+        // hid real bugs behind a confusing, wrong redirect.
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load your items"
+        );
+      }
     } finally {
       setLoading(false);
     }

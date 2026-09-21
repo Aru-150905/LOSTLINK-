@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Link2 } from "lucide-react";
@@ -19,8 +18,24 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+// The Supabase browser client writes the session cookie as a side effect of
+// signIn/signUp resolving, but that write isn't guaranteed to have landed in
+// the browser's real cookie jar by the very next tick - navigating
+// immediately can race it and have the server-side middleware see no
+// session yet (verified: a hard reload moments later works fine, one right
+// away doesn't). A client-side router.push is worse on top of that: the
+// navbar's "My Items" link prefetches /my-items on mount, before sign-in,
+// and Next's client Router Cache serves that stale signed-out response
+// instead of hitting the server again - router.refresh() doesn't clear it
+// either, since that only invalidates the *current* route's cache, not
+// other already-prefetched ones. A short delay plus a real browser
+// navigation sidesteps both issues.
+async function goToMyItems() {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  window.location.href = "/my-items";
+}
+
 export default function AuthPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({
@@ -47,7 +62,7 @@ export default function AuthPage() {
     }
 
     toast.success("Welcome back!");
-    router.push("/my-items");
+    await goToMyItems();
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -73,7 +88,7 @@ export default function AuthPage() {
     }
 
     toast.success("Account created! Check your email to verify.");
-    router.push("/my-items");
+    await goToMyItems();
   };
 
   return (
